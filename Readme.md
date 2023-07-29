@@ -119,7 +119,7 @@ docker run -d \
     -e CONFIG_FILE_PATH=config.yml \
     -p 3002:3002 \
     -v /path/to/config:/config \
-    ghrc.io/keiranlovett/github-hook-temp
+    ghcr.io/keiranlovett/gitlab-server-hook:main
 ```
 
 ## Usage without Docker
