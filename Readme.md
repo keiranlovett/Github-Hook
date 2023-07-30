@@ -1,6 +1,24 @@
 # Gitlab Webhook: Custom Templates
 
-This Gitlab webhook allows you to automatically inject new projects with a customisable content in Gitlab. It is designed to be used as a middleware between Gitlab and your application.
+This project aims to provide a simple webserver companion to a local Gitlab instance that listens for system events that can streamline the creation of Gitlab Projects.
+
+  - Enforcing Groups on newly created projects.
+  - Injecting a new Project repository with template files (such as `README.md`, `.gitignore`).
+
+This is achieved by using Gitlabs "system hooks" (not to be confused with server hooks or file hooks) that perform `HTTP POST` requests and are triggered by various Gitlab system events. You can see a complete list on Gitlabs (System Hooks page)[https://docs.gitlab.com/ee/administration/system_hooks.html].
+
+#### To create a system hook:
+
+> You must have Administrative access to the Gitlab instance you wish to configure the System Hook.
+
+1. Open the intended Gitlab instance you want to trigger events on.
+2. On the left sidebar, expand the top-most chevron.
+3. Select **Admin Area**.
+4. On the left sidebar, select **System Hooks**.
+5. Provide the **URL** and **Secret Token**.
+6. Select the checkbox next to each optional **Trigger** you want to enable.
+7. Select **Enable SSL verification**, if desired.
+8. Select **Add system hook**.
 
 ## Environment Variables
 Before running the webhook, you need to set the following environment variables:
@@ -131,3 +149,10 @@ If you want to run the webhook without Docker, follow these steps:
 4. Run `node app.js` to start the webhook server.
 5. Add a system hook in Gitlab that points to the webhook's URL to receive project creation events.
 6. Create a new project in Gitlab, and it will automatically be shared with the specified default group.
+
+
+
+# TODO / Contributing
+
+- [] Support for adding specific `Members` to a project.
+- [] Enfore a project naming convention.
