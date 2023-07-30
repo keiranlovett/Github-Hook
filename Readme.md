@@ -1,11 +1,12 @@
 # Gitlab Webhook: Custom Templates
 
-This project aims to provide a simple webserver companion to a local Gitlab instance that listens for system events that can streamline the creation of Gitlab Projects.
+This project aims to provide a simple webserver companion/receiver to a local Gitlab instance that listens for System Events.
 
-  - Enforcing Groups on newly created projects.
-  - Injecting a new Project repository with template files (such as `README.md`, `.gitignore`).
+Currently supported:
+  - Enforcing `Groups` on newly created projects.
+  - Injecting a new `Project` repository with template files (such as `README.md`, `.gitignore`).
 
-This is achieved by using Gitlabs "system hooks" (not to be confused with server hooks or file hooks) that perform `HTTP POST` requests and are triggered by various Gitlab system events. You can see a complete list on Gitlabs (System Hooks page)[https://docs.gitlab.com/ee/administration/system_hooks.html].
+This is achieved by using Gitlabs "System Hooks" (not to be confused with server hooks or file hooks) that perform `HTTP POST` requests and are triggered by various Gitlab system events. You can see a complete list on Gitlabs [System Hooks page](https://docs.gitlab.com/ee/administration/system_hooks.html).
 
 #### To create a system hook:
 
@@ -19,6 +20,8 @@ This is achieved by using Gitlabs "system hooks" (not to be confused with server
 6. Select the checkbox next to each optional **Trigger** you want to enable.
 7. Select **Enable SSL verification**, if desired.
 8. Select **Add system hook**.
+
+> You can easily debug your system hook receiver by going to **Admin Area -> System Hooks > Edit**, On the bottom of the screen there are “**Recent Deliveries**”. You can go to “View details” on each one of the requests in order to get additional debugging information— you can check the “Request headers” & “Response headers” of your request, the “Response body” that came back from your receiver and the JSON itself.
 
 ## Environment Variables
 Before running the webhook, you need to set the following environment variables:
@@ -40,7 +43,7 @@ This property specifies the regular expression pattern to match against the proj
 ```
 
 #### `groups` (optional)
-This property defines the groups to be added to the project along with their access levels. It should be an array of objects, where each object has a name and an access property. The name specifies the group's name as defined in Gitlab, and the access specifies the access level for the group. Follow Gitlabs documentation for more on (Access Levels)[https://docs.gitlab.com/ee/api/access_requests.html]. But right now, Access levels can be one of the following values:
+This property defines the groups to be added to the project along with their access levels. It should be an array of objects, where each object has a name and an access property. The name specifies the group's name as defined in Gitlab, and the access specifies the access level for the group. Follow Gitlabs documentation for more on [Access Levels](https://docs.gitlab.com/ee/api/access_requests.html). But right now, Access levels can be one of the following values:
 
 ```
 0: No access
@@ -143,7 +146,7 @@ docker run -d \
 ## Usage without Docker
 If you want to run the webhook without Docker, follow these steps:
 
-1. Make sure you have Node.js (https://nodejs.org) installed.
+1. Make sure you have [Node.js](https://nodejs.org) installed.
 2. Run `npm install` to install the required dependencies.
 3. Set the environment variables mentioned above in the `app.js` file.
 4. Run `node app.js` to start the webhook server.
@@ -156,3 +159,5 @@ If you want to run the webhook without Docker, follow these steps:
 
 - [] Support for adding specific `Members` to a project.
 - [] Enfore a project naming convention.
+- [] Custom logging support???
+- Pulling or changing data in LDAP servers.
