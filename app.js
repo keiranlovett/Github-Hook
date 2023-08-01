@@ -136,7 +136,6 @@ function startWebserver() {
   });
 
   webserver.post('/', function (req, res) {
-    res.send('Got it.');
     const eventName = req.body['event_name'];
     if (eventName === 'project_create') {
       /*
