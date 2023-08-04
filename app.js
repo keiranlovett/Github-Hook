@@ -22,11 +22,24 @@ const officialAccessLevels = {
   50: 'Owner',
 };
 
+const REQUEST_DELAY = 5000
+
+
 const url = process.env.GITLAB_URL,
   accessToken = process.env.GITLAB_ACCESS_TOKEN,
   defaultBranch = process.env.GITLAB_DEFAULT_BRANCH || 'main',
   configFilePath = process.env.CONFIG_FILE_PATH || 'config.yml',
   port = process.env.LISTEN_PORT || 3002;
+
+
+const eventActions = {
+  project_create: handleProjectCreateEvent,
+  push: handlePushEvent,
+  merge_request: handleMergeRequestEvent,
+  // Add more eventName-action pairs as needed
+};
+
+
 
 const { Gitlab } = require('@gitbeaker/rest');
 
@@ -66,6 +79,7 @@ function loadConfig(callback) {
     console.error('Error loading configuration file:', err);
   }
 }
+
 
 
 function watchConfigFile() {
@@ -137,20 +151,9 @@ function startWebserver() {
 
   webserver.post('/', function (req, res) {
     const eventName = req.body['event_name'];
-    if (eventName === 'project_create') {
-      /*
-        Example request:
-
-        {
-        "project_id" : 1,
-        "owner_email" : "example@gitlabhq.com",
-        "owner_name" : "Someone",
-        "name" : "Ruby",
-        "path" : "ruby",
-        "event_name" : "project_create"
-        }
-      */
-      handleProjectCreateEvent(req, res);
+    const action = eventActions[eventName];
+    if (action) {
+      action(req, res);
     } else {
       console.log(`Unknown event_name: ${eventName}`);
       res.status(400).send({ message: `Unknown event_name: ${eventName}` });
@@ -188,7 +191,7 @@ async function createCommit(projectId, projectNamespace, defaultBranch, actions)
     let commitMessage = '';
       for (const config of projectConfigs) {
         if (config.regex && config.regex.test(projectNamespace)) {
-        commitMessage = config.message || 'Placeholder commit message....';
+        commitMessage = config.commit.message || 'Placeholder commit message....';
         break;
       }
     }
@@ -223,6 +226,22 @@ async function handleProjectCreateEvent(req, res) {
     console.log(`Something unexpected went wrong! Error: ${err}`);
     res.status(500).send({ message: 'Something unexpected went wrong!' });
   }
+}
+
+async function handlePushEvent(req, res) {
+  console.log('Received push event:', req.body);
+
+  // Implement  logic for handling push events here
+
+  res.send('Push event handled successfully.');
+}
+
+async function handleMergeRequestEvent(req, res) {
+  console.log('Received merge request event:', req.body);
+
+  // Implement  logic for handling merge request events here
+
+  res.send('Merge request event handled successfully.');
 }
 
 
@@ -262,30 +281,32 @@ async function addGroupsToProject(projectId, projectConfig) {
 async function addCommitToProject(projectId, projectNamespace, projectConfig) {
   try {
     
-    if (projectConfig.paths.length === 0) {
+    if (projectConfig.commit.paths.length === 0) {
       console.log(`Terminating: No content to inject for files matching regex: ${projectConfig.regex && projectConfig.regex.toString()}`);
       return;
     } else {
       console.log(`Accepting: Content to inject for files matching regex: ${projectConfig.regex && projectConfig.regex.toString()}`);
       // Log all the files included in the projectConfig
-      for (const pathConfig of projectConfig.paths) {
+      for (const pathConfig of projectConfig.commit.paths) {
         console.log(`Source: ${pathConfig.source}, Target: ${pathConfig.target}`);
       }
     }
 
     // Read files and create actions using the new function
-    const data = await Promise.all(projectConfig.paths.map((p) => readFileAsync(p.source, 'utf8')));
-    const actions = await determineActions(projectId, defaultBranch, projectConfig.paths, data);
+    const data = await Promise.all(projectConfig.commit.paths.map((p) => readFileAsync(p.source, 'utf8')));
+    const actions = await determineActions(projectId, defaultBranch, projectConfig.commit.paths, data);
 
     console.log('Actions:', actions);
 
-    await createCommit(projectId, projectNamespace, defaultBranch, actions);
+    setTimeout(() => {
+      createCommit(projectId, projectNamespace, defaultBranch, actions);
+    }, REQUEST_DELAY)
+
 
   } catch (err) {
     console.log(`Error commits to the project: ${err.message}`);
   }
 }
-
 
 
 // Function to determine the action based on file existence
@@ -324,7 +345,7 @@ async function getFileExists(project_id, file, branch) {
     await api.RepositoryFiles.show(project_id, file, branch);
     fileExists = true;
   } catch(e) {
-    console.log(`Error reading file: ${e.message}`);
+    console.log(`Error reading file: ${e.body} ${e.message}`);
   }
   return fileExists;
 }
