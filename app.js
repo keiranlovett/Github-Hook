@@ -9,21 +9,10 @@ let express = require('express'),
   path = require('path'),
   yaml = require('js-yaml');
 
-
 const injectiblesFilePath = '../config/';
 
-const officialAccessLevels = {
-  0: 'No access',
-  5: 'Minimal access',
-  10: 'Guest',
-  20: 'Reporter',
-  30: 'Developer',
-  40: 'Maintainer',
-  50: 'Owner',
-};
-
-const REQUEST_DELAY = 5000
-
+// Import the plugin functions
+const projectCreateEvent = require("./events/project_create");
 
 const url = process.env.GITLAB_URL,
   accessToken = process.env.GITLAB_ACCESS_TOKEN,
@@ -32,11 +21,9 @@ const url = process.env.GITLAB_URL,
   port = process.env.LISTEN_PORT || 3002;
 
 
-const eventActions = {
-  project_create: handleProjectCreateEvent,
-  push: handlePushEvent,
-  merge_request: handleMergeRequestEvent,
-  // Add more eventName-action pairs as needed
+// Map event names to corresponding plugin functions
+const eventPlugins = {
+  project_create: projectCreateEvent
 };
 
 
@@ -56,30 +43,32 @@ let projectConfigs,
 verifyEnvironment();
 watchConfigFile();
 
+// Export a function to get the loaded project configurations
+module.exports.getProjectConfigs = function () {
+  return projectConfigs;
+};
+
 // Functions
 
-function loadConfig(callback) {
+function loadConfig() {
   try {
     const fullConfigPath = path.join(injectiblesFilePath, configFilePath);
     const configFile = fs.readFileSync(fullConfigPath, 'utf8');
-    projectConfigs = yaml.load(configFile, { schema: yaml.JSON_SCHEMA });
-    projectConfigs.forEach((gic) => {
+    const loadedConfigs = yaml.load(configFile, { schema: yaml.JSON_SCHEMA });
+    loadedConfigs.forEach((gic) => {
       if (gic.regex) {
         gic.regex = new RegExp(gic.regex); // Convert the regex string to a regular expression
       }
     });
-    console.log('Configuration file loaded successfully.');
-    if (typeof callback === 'function') {
-      callback(); // Invoke the callback function if provided
-    }
 
-    // Perform the sanity check after loading the configuration
-    validateAccessLevels();
+    // Update the projectConfigs with the new loaded configurations
+    projectConfigs = loadedConfigs;
+
+    console.log('Configuration file loaded successfully.');
   } catch (err) {
     console.error('Error loading configuration file:', err);
   }
 }
-
 
 
 function watchConfigFile() {
@@ -90,16 +79,19 @@ function watchConfigFile() {
         // If the server promise exists, it means the server is running, so stop it and reload the configuration
         serverPromise.then(() => {
           stopWebserver(() => {
-            loadConfig(startWebserver);
+            loadConfig(); // Simply reload the configuration without checking the return value
+            startWebserver();
           });
         });
       } else {
         // If the server promise does not exist, the server is not running, so simply reload the configuration and start the server
-        loadConfig(startWebserver);
+        loadConfig(); // Simply reload the configuration without checking the return value
+        startWebserver();
       }
     }
   });
 }
+
 
 function verifyEnvironment() {
   if (typeof url == 'undefined') {
@@ -149,17 +141,38 @@ function startWebserver() {
     res.send('Hello, please give me a POST!\n');
   });
 
-  webserver.post('/', function (req, res) {
-    const eventName = req.body['event_name'];
-    const action = eventActions[eventName];
-    if (action) {
-      action(req, res);
-    } else {
-      console.log(`Unknown event_name: ${eventName}`);
-      res.status(400).send({ message: `Unknown event_name: ${eventName}` });
-    }
+  // Route to handle the '/config' endpoint
+  webserver.get('/config', function (req, res) {
+    // Generate the human-friendly output
+    const formattedOutput = projectConfigs.map((config, index) => {
+      return `
+        Project Config ${index + 1}:
+          Regex: ${config.regex}
+          Commit Message: ${config.commit.message}
+          Groups: ${JSON.stringify(config.groups)}
+          Commit Paths: ${JSON.stringify(config.commit.paths)}
+        `;
+    }).join('\n');
+
+    // Send the formatted output back to the client
+    res.send(`<pre>${formattedOutput}</pre>`);
   });
 
+  webserver.post('/', function (req, res) {
+    const eventName = req.body['event_name'];
+    const eventData = req.body;
+
+    // Check if the event has a corresponding plugin
+    if (eventPlugins[eventName]) {
+      const pluginFunction = eventPlugins[eventName];
+      pluginFunction(eventData, projectConfigs, api, defaultBranch, () => {
+        res.send('Project Create Event handled successfully.');
+      });
+
+    } else {
+      console.log(`No plugin found for event: ${eventName}`);
+    }
+  });
 
   // Start the server and save the promise
   serverPromise = new Promise((resolve) => {
@@ -184,185 +197,11 @@ function stopWebserver(callback) {
   }
 }
 
-// Add error handling for api.Commits.create
-async function createCommit(projectId, projectNamespace, defaultBranch, actions) {
-  try {
-
-    let commitMessage = '';
-      for (const config of projectConfigs) {
-        if (config.regex && config.regex.test(projectNamespace)) {
-        commitMessage = config.commit.message || 'Placeholder commit message....';
-        break;
-      }
-    }
-
-    await api.Commits.create(projectId, defaultBranch, commitMessage, actions);
-    console.log('Commit created successfully.');
-  } catch (err) {
-    console.log(`Error creating commit: ${err.message}`);
-  }
-}
-
-
-// Function to handle project_create event
-async function handleProjectCreateEvent(req, res) {
-  console.log(`New Project "${req.body['name']}" created.`);
- 
-  try {
-    const projectId = req.body['project_id'];
-    const projectName = req.body['path_with_namespace'];
-    const projectConfig = projectConfigs.find(
-      (gic) => gic.regex && gic.regex.test(projectName)
-    );
-
-    if (projectConfig) {
-      await addCommitToProject(projectId, projectName, projectConfig);
-      await addGroupsToProject(projectId, projectConfig);
-    } else {
-      console.log('No projectConfig found for the project.');
-    }
-
-  } catch (err) {
-    console.log(`Something unexpected went wrong! Error: ${err}`);
-    res.status(500).send({ message: 'Something unexpected went wrong!' });
-  }
-}
-
-async function handlePushEvent(req, res) {
-  console.log('Received push event:', req.body);
-
-  // Implement  logic for handling push events here
-
-  res.send('Push event handled successfully.');
-}
-
-async function handleMergeRequestEvent(req, res) {
-  console.log('Received merge request event:', req.body);
-
-  // Implement  logic for handling merge request events here
-
-  res.send('Merge request event handled successfully.');
-}
-
-
-// Function to add groups to the project with the specified access levels
-async function addGroupsToProject(projectId, projectConfig) {
-  try {
-    // Check if the projectConfig has any groups specified
-    if (projectConfig.groups && projectConfig.groups.length > 0) {
-      for (const groupInfo of projectConfig.groups) {
-        try {
-          // Check if the groupInfo object has both name and access properties
-          if (!groupInfo.name || !groupInfo.access) {
-            console.log('Error: Invalid groupInfo object. It must have both "name" and "access" properties.');
-            continue; // Skip this iteration and move to the next groupInfo
-          }
-
-          const groupName = groupInfo.name;
-          const accessLevel = groupInfo.access;
-          // First, get the group details using the name
-          const group = await api.Groups.show(groupName);
-
-          // Then, add the group to the project with the specified access level
-          await api.Projects.share(projectId, group.id, accessLevel);
-
-          console.log(`Group "${groupName}" added to the project with access level: ${accessLevel}.`);
-        } catch (err) {
-          console.log(`Error adding group "${groupInfo.name}" to project: ${err.message}`);
-        }
-      }
-    }
-  } catch (err) {
-    console.log(`Error adding groups to project: ${err.message}`);
-  }
-}
-
-// Function to add groups to the project with the specified access levels
-async function addCommitToProject(projectId, projectNamespace, projectConfig) {
-  try {
-    
-    if (projectConfig.commit.paths.length === 0) {
-      console.log(`Terminating: No content to inject for files matching regex: ${projectConfig.regex && projectConfig.regex.toString()}`);
-      return;
-    } else {
-      console.log(`Accepting: Content to inject for files matching regex: ${projectConfig.regex && projectConfig.regex.toString()}`);
-      // Log all the files included in the projectConfig
-      for (const pathConfig of projectConfig.commit.paths) {
-        console.log(`Source: ${pathConfig.source}, Target: ${pathConfig.target}`);
-      }
-    }
-
-    // Read files and create actions using the new function
-    const data = await Promise.all(projectConfig.commit.paths.map((p) => readFileAsync(p.source, 'utf8')));
-    const actions = await determineActions(projectId, defaultBranch, projectConfig.commit.paths, data);
-
-    console.log('Actions:', actions);
-
-    setTimeout(() => {
-      createCommit(projectId, projectNamespace, defaultBranch, actions);
-    }, REQUEST_DELAY)
-
-
-  } catch (err) {
-    console.log(`Error commits to the project: ${err.message}`);
-  }
-}
-
-
-// Function to determine the action based on file existence
-async function determineActions(projectId, branch, paths, contentData) {
-  const actions = [];
-  for (let index = 0; index < contentData.length; index++) {
-    const content = contentData[index];
-    const targetPath = paths[index].target;
-    const fileExists = await getFileExists(projectId, targetPath, branch);
-    const action = fileExists ? 'update' : 'create';
-    actions.push({
-      action,
-      file_path: targetPath,
-      content,
-    });
-  }
-  return actions;
-}
-
-async function readFileAsync(file, encoding) {
-  const fullSourcePath = path.join(injectiblesFilePath, file);
-  return new Promise((resolve, reject) => {
-    fs.readFile(fullSourcePath, encoding, (err, data) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
-  });
-}
-
-async function getFileExists(project_id, file, branch) {
-  let fileExists = false;
-  try {
-    await api.RepositoryFiles.show(project_id, file, branch);
-    fileExists = true;
-  } catch(e) {
-    console.log(`Error reading file: ${e.body} ${e.message}`);
-  }
-  return fileExists;
-}
-
-function validateAccessLevels() {
-  if (!projectConfigs) {
-    return;
-  }
-
-  projectConfigs.forEach((gic) => {
-    if (Array.isArray(gic.groups)) {
-      for (const groupInfo of gic.groups) {
-        const { name, access } = groupInfo;
-        if (typeof access !== 'number' || !(access in officialAccessLevels)) {
-          console.warn(`Warning: Group "${name}" has an invalid or unsupported access level (${access}).`);
-        }
-      }
-    }
-  });
+// Functions for handling project_create event
+function getProjectConfig(projectName) {
+  // Load and return the project configuration based on the projectName
+  const projectConfig = projectConfigs.find(
+    (gic) => gic.regex && gic.regex.test(projectName)
+  );
+  return projectConfig;
 }
