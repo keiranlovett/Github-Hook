@@ -14,7 +14,7 @@ const officialAccessLevels = {
 const REQUEST_DELAY = 5000;
 const injectiblesFilePath = '../config/';
 
-module.exports = function (eventData, projectConfigs, api, defaultBranch, injectiblesFilePath, callback) {
+module.exports = function (eventData, projectConfigs, api, defaultBranch, callback) {
   const projectId = eventData.project_id;
   const projectName = eventData.path_with_namespace;
   const projectConfig = projectConfigs.find((gic) => gic.regex && gic.regex.test(projectName));
@@ -120,7 +120,11 @@ module.exports = function (eventData, projectConfigs, api, defaultBranch, inject
     return new Promise((resolve, reject) => {
       fs.readFile(fullSourcePath, encoding, (err, data) => {
         if (err) {
-          reject(err);
+          if (err.code === 'EACCES' || err.code === 'EPERM') {
+            reject(new Error(`Unauthorized: ${err.message}`));
+          } else {
+            reject(err);
+          }
         } else {
           resolve(data);
         }
@@ -139,7 +143,8 @@ module.exports = function (eventData, projectConfigs, api, defaultBranch, inject
     return fileExists;
   }
 
-  function validateAccessLevels(projectConfig) {
+function validateAccessLevels(projectConfig) {
+  if (projectConfig.groups && Array.isArray(projectConfig.groups)) {
     projectConfig.groups.forEach((groupInfo) => {
       const { name, access } = groupInfo;
       if (typeof access !== 'number' || !(access in officialAccessLevels)) {
@@ -147,6 +152,8 @@ module.exports = function (eventData, projectConfigs, api, defaultBranch, inject
       }
     });
   }
+}
+
 
   // Call the inner functions
   addCommitToProject();
