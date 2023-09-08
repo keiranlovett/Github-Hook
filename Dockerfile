@@ -8,6 +8,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY app.js /app/
+COPY events /app/events
 
 RUN npm install
 
