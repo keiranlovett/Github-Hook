@@ -165,10 +165,11 @@ function startWebserver() {
     // Check if the event has a corresponding plugin
     if (eventPlugins[eventName]) {
       const pluginFunction = eventPlugins[eventName];
-      pluginFunction(eventData, projectConfigs, api, defaultBranch, () => {
-        res.send('Project Create Event handled successfully.');
-      });
-
+      if (typeof pluginFunction === 'function') {
+         pluginFunction(eventData, projectConfigs, api, defaultBranch, () => {
+          res.send('Project Create Event handled successfully.');
+        });
+      }
     } else {
       console.log(`No plugin found for event: ${eventName}`);
     }
