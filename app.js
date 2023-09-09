@@ -43,6 +43,10 @@ let projectConfigs,
 verifyEnvironment();
 watchConfigFile();
 
+console.log(`Connecting to GitLab instance: ${url} `);
+
+getUserInfo();
+
 // Export a function to get the loaded project configurations
 module.exports.getProjectConfigs = function () {
   return projectConfigs;
@@ -67,6 +71,7 @@ function loadConfig() {
     console.log('Configuration file loaded successfully.');
   } catch (err) {
     console.error('Error loading configuration file:', err);
+    console.log('Check that a valid Personal Access Token is provided to GITLAB_ACCESS_TOKEN.');
   }
 }
 
@@ -205,4 +210,13 @@ function getProjectConfig(projectName) {
     (gic) => gic.regex && gic.regex.test(projectName)
   );
   return projectConfig;
+}
+
+async function getUserInfo() {
+  try {
+    let user = await api.Users.showCurrentUser(); // Gives you your userId
+    console.log(`Success. Connected. Authenticated user: ${user.name} (${user.username})`);
+  } catch (error) {
+    console.error('Error connecting to GitLab:', error);
+  }
 }

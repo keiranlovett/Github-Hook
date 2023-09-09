@@ -138,7 +138,7 @@ module.exports = function (eventData, projectConfigs, api, defaultBranch, callba
       await api.RepositoryFiles.show(projectId, file, defaultBranch);
       fileExists = true;
     } catch(e) {
-      console.log(`Error reading file: ${e.body} ${e.message}`);
+      console.log(`Checking for file ${file}. Reading file: ${e.body} ${e.message}`);
     }
     return fileExists;
   }
